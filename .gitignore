@@ -1,0 +1,31 @@
+# Ignorar archivos binarios
+*.exe
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+
+# Ignorar carpetas de dependencias
+vendor/
+
+# Ignorar archivos de configuración local
+.env
+.env.local
+
+# Ignorar archivos de IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Ignorar logs
+*.log
+
+# Ignorar datos de LocalStack
+localstack-data/
+
+# Ignorar archivos de sistema
+.DS_Store
+Thumbs.db

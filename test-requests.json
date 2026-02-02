@@ -1,0 +1,39 @@
+{
+  "name": "Registro de Empleado",
+  "requests": [
+    {
+      "name": "Crear Empleado",
+      "method": "POST",
+      "url": "http://localhost:8080/api/employees",
+      "headers": {
+        "Content-Type": "application/json"
+      },
+      "body": {
+        "name": "María García",
+        "email": "maria.garcia@example.com"
+      }
+    },
+    {
+      "name": "Obtener Empleados",
+      "method": "GET",
+      "url": "http://localhost:8080/api/employees"
+    },
+    {
+      "name": "Crear Empleado - Employee Service Directo",
+      "method": "POST",
+      "url": "http://localhost:8081/employees",
+      "headers": {
+        "Content-Type": "application/json"
+      },
+      "body": {
+        "name": "Carlos Rodríguez",
+        "email": "carlos.rodriguez@example.com"
+      }
+    },
+    {
+      "name": "Obtener Empleados - Employee Service Directo",
+      "method": "GET",
+      "url": "http://localhost:8081/employees"
+    }
+  ]
+}
