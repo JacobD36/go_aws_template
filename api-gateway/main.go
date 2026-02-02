@@ -13,8 +13,9 @@ import (
 )
 
 type Employee struct {
-	Name  string `json:"name"`
-	Email string `json:"email"`
+	Name     string `json:"name"`
+	Email    string `json:"email"`
+	Password string `json:"password"`
 }
 
 type APIGateway struct {
@@ -38,12 +39,7 @@ func (gw *APIGateway) CreateEmployeeHandler(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	if employee.Name == "" || employee.Email == "" {
-		http.Error(w, "Name and email are required", http.StatusBadRequest)
-		return
-	}
-
-	// Forward request to employee service
+	// Forward request to employee service (delegar validación al servicio)
 	jsonData, err := json.Marshal(employee)
 	if err != nil {
 		http.Error(w, "Error processing request", http.StatusInternalServerError)

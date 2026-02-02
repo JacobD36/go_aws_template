@@ -132,9 +132,16 @@ curl -X POST http://localhost:8080/api/employees \
   -H "Content-Type: application/json" \
   -d '{
     "name": "Juan Pérez",
-    "email": "juan.perez@example.com"
+    "email": "juan.perez@example.com",
+    "password": "SecurePass123!"
   }'
 ```
+
+**Requisitos del Password:**
+- Mínimo 8 caracteres
+- Al menos una letra mayúscula
+- Al menos un número
+- Al menos un caracter especial (!@#$%^&*()_+-=[]{};\':"|,.<>/?~)
 
 Respuesta esperada:
 ```json
@@ -145,6 +152,8 @@ Respuesta esperada:
   "created_at": "2026-01-27T10:30:00Z"
 }
 ```
+
+**Nota de Seguridad:** El password nunca se devuelve en las respuestas ni aparece en los logs.
 
 ### Obtener todos los empleados (GET)
 
@@ -269,7 +278,51 @@ docker-compose down -v
 - **Interface Segregation**: Interfaces específicas y cohesivas
 - **Dependency Inversion**: Dependencias apuntan hacia abstracciones
 
-## 🔍 Troubleshooting
+## � Seguridad
+
+### Gestión de Passwords
+El sistema implementa las siguientes medidas de seguridad para los passwords:
+
+- **Validación de Complejidad**: Los passwords deben cumplir requisitos estrictos:
+  - Mínimo 8 caracteres
+  - Al menos una letra mayúscula (A-Z)
+  - Al menos un número (0-9)
+  - Al menos un caracter especial (!@#$%^&* etc.)
+
+- **Protección en Almacenamiento**: 
+  - Los passwords se guardan en DynamoDB
+  - Nunca se serializan en respuestas JSON (tag `json:"-"`)
+  - No aparecen en logs del sistema
+
+- **Respuestas HTTP**:
+  - El endpoint de creación devuelve un objeto `EmployeePublic` sin el password
+  - El endpoint de listado devuelve arrays de `EmployeePublic` sin passwords
+  - El campo password está completamente oculto en todas las respuestas
+
+**Ejemplo de validación:**
+```bash
+# Password inválido (falta mayúscula)
+curl -X POST http://localhost:8080/api/employees \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "Test User",
+    "email": "test@example.com",
+    "password": "weak123!"
+  }'
+# Error: invalid password: must be at least 8 characters with at least one uppercase letter, one number, and one special character
+
+# Password válido
+curl -X POST http://localhost:8080/api/employees \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "Test User",
+    "email": "test@example.com",
+    "password": "SecurePass123!"
+  }'
+# Success: devuelve empleado sin password
+```
+
+## �🔍 Troubleshooting
 
 ### Error: "Cannot connect to LocalStack"
 Espera 10-15 segundos después de `docker-compose up` antes de crear los recursos.
