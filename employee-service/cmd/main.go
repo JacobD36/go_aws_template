@@ -64,9 +64,10 @@ func main() {
 	// Crear instancias de infraestructura
 	repository := infrastructure.NewDynamoDBRepository(dynamoClient, tableName)
 	publisher := infrastructure.NewSQSEventPublisher(sqsClient, queueURL)
+	passwordHasher := infrastructure.NewBcryptPasswordHasher()
 
-	// Crear servicio de aplicación
-	service := application.NewEmployeeService(repository, publisher)
+	// Crear servicio de aplicación (con inyección de dependencias)
+	service := application.NewEmployeeService(repository, publisher, passwordHasher)
 
 	// Crear manejador HTTP
 	handler := infrastructure.NewHTTPHandler(service)

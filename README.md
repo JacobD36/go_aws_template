@@ -28,7 +28,14 @@ employee-service/
 │   ├── domain/          # Entidades de negocio
 │   ├── application/     # Casos de uso
 │   ├── ports/           # Interfaces (puertos)
-│   └── infrastructure/  # Adaptadores (DynamoDB, SQS, HTTP)
+│   │   ├── repository.go
+│   │   ├── event_publisher.go
+│   │   └── password_hasher.go    # 🔒 Puerto para hash de passwords
+│   └── infrastructure/  # Adaptadores (DynamoDB, SQS, HTTP, Bcrypt)
+│       ├── dynamodb_repository.go
+│       ├── sqs_publisher.go
+│       ├── http_handler.go
+│       └── bcrypt_hasher.go       # 🔒 Implementación con bcrypt
 ├── go.mod
 └── Dockerfile
 
@@ -278,7 +285,44 @@ docker-compose down -v
 - **Interface Segregation**: Interfaces específicas y cohesivas
 - **Dependency Inversion**: Dependencias apuntan hacia abstracciones
 
-## � Seguridad
+### Patrones de Diseño Implementados
+
+#### Strategy Pattern + Dependency Inversion (Hash de Passwords)
+El sistema implementa hash de passwords aplicando arquitectura hexagonal:
+
+**Estructura:**
+```
+ports/
+  └── password_hasher.go      # Puerto (interfaz)
+infrastructure/
+  └── bcrypt_hasher.go         # Adaptador (implementación con bcrypt)
+application/
+  └── employee_service.go      # Inyección de dependencia
+```
+
+**Principios aplicados:**
+1. **Dependency Inversion Principle (DIP)**: 
+   - El servicio de aplicación depende de la abstracción `PasswordHasher` (puerto)
+   - No depende de la implementación concreta `BcryptPasswordHasher`
+   - El dominio permanece puro sin conocer bcrypt
+
+2. **Strategy Pattern**:
+   - El algoritmo de hash está encapsulado en una estrategia intercambiable
+   - Se puede cambiar de bcrypt a argon2, scrypt u otro sin modificar el servicio
+   - Solo se crea un nuevo adaptador que implemente el puerto
+
+3. **Ports & Adapters (Hexagonal)**:
+   - `PasswordHasher` es un puerto (interfaz en el dominio)
+   - `BcryptPasswordHasher` es un adaptador (implementación en infraestructura)
+   - Inyección de dependencias en el constructor del servicio
+
+**Beneficios:**
+- ✅ Fácil de testear (mock del hasher)
+- ✅ Extensible (nuevos algoritmos sin cambiar código existente)
+- ✅ Dominio independiente de librerías externas
+- ✅ Cumple Open/Closed Principle
+
+## 🔒 Seguridad
 
 ### Gestión de Passwords
 El sistema implementa las siguientes medidas de seguridad para los passwords:
@@ -289,15 +333,18 @@ El sistema implementa las siguientes medidas de seguridad para los passwords:
   - Al menos un número (0-9)
   - Al menos un caracter especial (!@#$%^&* etc.)
 
-- **Protección en Almacenamiento**: 
-  - Los passwords se guardan en DynamoDB
-  - Nunca se serializan en respuestas JSON (tag `json:"-"`)
-  - No aparecen en logs del sistema
+- **Hash con Bcrypt**: 
+  - Los passwords se hashean usando bcrypt (cost factor 10)
+  - Implementado mediante el patrón Strategy y arquitectura hexagonal
+  - Los passwords nunca se almacenan en texto plano
+  - El hash es irreversible y único por cada password (salt automático)
+  - Se guarda solo el hash en DynamoDB
 
-- **Respuestas HTTP**:
-  - El endpoint de creación devuelve un objeto `EmployeePublic` sin el password
+- **Protección en Respuestas**: 
+  - El password (hasheado) nunca se serializa en JSON (tag `json:"-"`)
+  - No aparece en logs del sistema
+  - El endpoint de creación devuelve un objeto `EmployeePublic` sin password
   - El endpoint de listado devuelve arrays de `EmployeePublic` sin passwords
-  - El campo password está completamente oculto en todas las respuestas
 
 **Ejemplo de validación:**
 ```bash
