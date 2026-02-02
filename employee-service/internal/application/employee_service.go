@@ -24,8 +24,8 @@ func NewEmployeeService(repo ports.EmployeeRepository, pub ports.EventPublisher)
 }
 
 // CreateEmployee crea un nuevo empleado
-func (s *EmployeeService) CreateEmployee(ctx context.Context, name, email string) (*domain.Employee, error) {
-	employee := domain.NewEmployee(name, email)
+func (s *EmployeeService) CreateEmployee(ctx context.Context, name, email, password string) (*domain.Employee, error) {
+	employee := domain.NewEmployee(name, email, password)
 
 	if err := employee.Validate(); err != nil {
 		return nil, err

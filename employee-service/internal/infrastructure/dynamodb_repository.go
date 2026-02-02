@@ -42,7 +42,7 @@ func (r *DynamoDBRepository) Save(ctx context.Context, employee *domain.Employee
 		return err
 	}
 
-	log.Printf("Employee saved successfully: %s", employee.ID)
+	log.Printf("Employee saved successfully: ID=%s, Name=%s, Email=%s", employee.ID, employee.Name, employee.Email)
 	return nil
 }
 
