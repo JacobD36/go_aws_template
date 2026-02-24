@@ -8,6 +8,7 @@ Este proyecto implementa un sistema de registro de empleados usando:
 
 - **API Gateway**: Punto de entrada HTTP con endpoints REST
 - **Employee Service**: Microservicio que gestiona el registro de empleados
+- **Auth Service**: Microservicio de autenticación que genera tokens JWT
 - **Logger Service**: Microservicio que procesa eventos y genera logs
 - **LocalStack**: Emulador local de servicios AWS (SQS y DynamoDB)
 
@@ -28,7 +29,14 @@ employee-service/
 │   ├── domain/          # Entidades de negocio
 │   ├── application/     # Casos de uso
 │   ├── ports/           # Interfaces (puertos)
-│   └── infrastructure/  # Adaptadores (DynamoDB, SQS, HTTP)
+│   │   ├── repository.go
+│   │   ├── event_publisher.go
+│   │   └── password_hasher.go    # 🔒 Puerto para hash de passwords
+│   └── infrastructure/  # Adaptadores (DynamoDB, SQS, HTTP, Bcrypt)
+│       ├── dynamodb_repository.go
+│       ├── sqs_publisher.go
+│       ├── http_handler.go
+│       └── bcrypt_hasher.go       # 🔒 Implementación con bcrypt
 ├── go.mod
 └── Dockerfile
 
@@ -40,6 +48,24 @@ logger-service/
 │   ├── application/
 │   ├── ports/
 │   └── infrastructure/
+├── go.mod
+└── Dockerfile
+
+auth-service/
+├── cmd/
+│   └── main.go
+├── internal/
+│   ├── domain/          # Entidades (User, LoginCredentials, AuthToken)
+│   ├── application/     # Lógica de autenticación
+│   ├── ports/           # Interfaces (puertos)
+│   │   ├── repository.go
+│   │   ├── password_hasher.go    # 🔒 Puerto para comparar passwords
+│   │   └── token_generator.go    # 🔐 Puerto para generar JWT
+│   └── infrastructure/  # Adaptadores (DynamoDB, Bcrypt, JWT, HTTP)
+│       ├── dynamodb_repository.go
+│       ├── bcrypt_hasher.go       # 🔒 Comparación con bcrypt
+│       ├── jwt_token_generator.go # 🔐 Generación de JWT
+│       └── http_handler.go
 ├── go.mod
 └── Dockerfile
 ```
@@ -74,6 +100,14 @@ cd logger-service
 go mod init logger-service
 go mod tidy
 cd ..
+
+# Auth Service
+cd auth-service
+go mod init auth-service
+go mod tidy
+cd ..
+go mod tidy
+cd ..
 ```
 
 ### 2. Iniciar servicios con Docker Compose
@@ -88,6 +122,7 @@ Esto iniciará:
 - LocalStack (puerto 4566)
 - API Gateway (puerto 8080)
 - Employee Service (puerto 8081)
+- Auth Service (puerto 8082)
 - Logger Service (proceso en background)
 
 ### 3. Configurar recursos AWS en LocalStack
@@ -161,6 +196,28 @@ Respuesta esperada:
 curl http://localhost:8080/api/employees
 ```
 
+### Autenticación (Login)
+
+```bash
+curl -X POST http://localhost:8080/api/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{
+    "email": "juan.perez@example.com",
+    "password": "SecurePass123!"
+  }'
+```
+
+Respuesta esperada:
+```json
+{
+  "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+  "user_id": "uuid-generated",
+  "expires_at": 1738384800
+}
+```
+
+**Nota:** El token JWT contiene únicamente el ID del usuario y se puede usar para autenticar peticiones HTTP. El endpoint `/api/auth/login` en el API Gateway reenvía las peticiones al Auth Service.
+
 ### Ver logs del Logger Service
 
 El Logger Service muestra en consola cada evento procesado:
@@ -218,7 +275,19 @@ export SQS_QUEUE_URL=http://localhost:4566/000000000000/employee-queue
 export DYNAMODB_TABLE=employee-logs
 go run cmd/main.go
 
-# Terminal 3 - API Gateway
+# Terminal 3 - Auth Service
+cd auth-service
+export AWS_ENDPOINT=http://localhost:4566
+export AWS_REGION=us-east-1
+export AWS_ACCESS_KEY_ID=test
+export AWS_SECRET_ACCESS_KEY=test
+export DYNAMODB_TABLE=employees
+export JWT_SECRET=my-super-secret-jwt-key
+export JWT_EXPIRATION_MINUTES=60
+export PORT=8082
+go run cmd/main.go
+
+# Terminal 4 - API Gateway
 cd api-gateway
 export EMPLOYEE_SERVICE_URL=http://localhost:8081
 go run main.go
@@ -226,9 +295,29 @@ go run main.go
 
 ## 📊 Flujo de Datos
 
+### Registro de Empleados
 1. Cliente envía POST a `/api/employees` en API Gateway
 2. API Gateway reenvía la petición a Employee Service
 3. Employee Service:
+   - Valida los datos y complejidad del password
+   - Hashea el password con bcrypt
+   - Guarda el empleado en DynamoDB (tabla `employees`)
+   - Publica evento en SQS
+4. Logger Service:
+   - Consume el evento de SQS
+   - Guarda log en DynamoDB (tabla `employee-logs`)
+   - Muestra información en consola
+
+### Autenticación (Login)
+1. Cliente envía POST a `/auth/login` en Auth Service con email y password
+2. Auth Service:
+   - Valida que email y password no estén vacíos
+   - Busca el usuario por email en DynamoDB (tabla `employees`)
+   - Compara el password ingresado con el hash almacenado usando bcrypt
+   - Genera un token JWT que contiene el ID del usuario
+   - Retorna el token con tiempo de expiración (60 minutos por defecto)
+
+## 🧪 Verificar tablas DynamoDB
    - Valida los datos
    - Guarda el empleado en DynamoDB (tabla `employees`)
    - Publica evento en SQS
@@ -278,7 +367,59 @@ docker-compose down -v
 - **Interface Segregation**: Interfaces específicas y cohesivas
 - **Dependency Inversion**: Dependencias apuntan hacia abstracciones
 
-## � Seguridad
+### Patrones de Diseño Implementados
+
+#### Strategy Pattern + Dependency Inversion (Hash de Passwords & JWT)
+El sistema implementa hash de passwords y generación de JWT aplicando arquitectura hexagonal:
+
+**Estructura en Employee Service:**
+```
+ports/
+  └── password_hasher.go      # Puerto (interfaz para hash)
+infrastructure/
+  └── bcrypt_hasher.go        # Adaptador (implementación con bcrypt)
+application/
+  └── employee_service.go     # Inyección de dependencia
+```
+
+**Estructura en Auth Service:**
+```
+ports/
+  ├── password_hasher.go      # Puerto (interfaz para comparar passwords)
+  ├── repository.go           # Puerto (búsqueda de usuarios)
+  └── token_generator.go      # Puerto (interfaz para generar JWT)
+infrastructure/
+  ├── bcrypt_hasher.go        # Adaptador (comparación con bcrypt)
+  ├── dynamodb_repository.go  # Adaptador (DynamoDB)
+  └── jwt_token_generator.go  # Adaptador (JWT con golang-jwt/jwt)
+application/
+  └── auth_service.go         # Inyección de dependencias
+```
+
+**Principios aplicados:**
+1. **Dependency Inversion Principle (DIP)**: 
+   - Los servicios dependen de abstracciones (`PasswordHasher`, `TokenGenerator`, `UserRepository`)
+   - No dependen de implementaciones concretas
+   - El dominio permanece puro sin conocer bcrypt ni JWT
+
+2. **Strategy Pattern**:
+   - Los algoritmos (hash, JWT) están encapsulados en estrategias intercambiables
+   - Se puede cambiar de bcrypt a argon2, o de JWT a OAuth sin modificar servicios
+   - Solo se crea un nuevo adaptador que implemente el puerto
+
+3. **Ports & Adapters (Hexagonal)**:
+   - Los puertos son interfaces en la capa de dominio/aplicación
+   - Los adaptadores son implementaciones en infraestructura
+   - Inyección de dependencias en constructores de servicios
+
+**Beneficios:**
+- ✅ Fácil de testear (mock de hasher, token generator, repository)
+- ✅ Extensible (nuevos algoritmos sin cambiar código existente)
+- ✅ Dominio independiente de librerías externas
+- ✅ Cumple Open/Closed Principle
+- ✅ Auth Service reutiliza la misma arquitectura que Employee Service
+
+## 🔒 Seguridad
 
 ### Gestión de Passwords
 El sistema implementa las siguientes medidas de seguridad para los passwords:
@@ -289,15 +430,49 @@ El sistema implementa las siguientes medidas de seguridad para los passwords:
   - Al menos un número (0-9)
   - Al menos un caracter especial (!@#$%^&* etc.)
 
-- **Protección en Almacenamiento**: 
-  - Los passwords se guardan en DynamoDB
-  - Nunca se serializan en respuestas JSON (tag `json:"-"`)
-  - No aparecen en logs del sistema
+- **Hash con Bcrypt**: 
+  - Los passwords se hashean usando bcrypt (cost factor 10)
+  - Implementado mediante el patrón Strategy y arquitectura hexagonal
+  - Los passwords nunca se almacenan en texto plano
+  - El hash es irreversible y único por cada password (salt automático)
+  - Se guarda solo el hash en DynamoDB
 
-- **Respuestas HTTP**:
-  - El endpoint de creación devuelve un objeto `EmployeePublic` sin el password
+- **Protección en Respuestas**: 
+  - El password (hasheado) nunca se serializa en JSON (tag `json:"-"`)
+  - No aparece en logs del sistema
+  - El endpoint de creación devuelve un objeto `EmployeePublic` sin password
   - El endpoint de listado devuelve arrays de `EmployeePublic` sin passwords
-  - El campo password está completamente oculto en todas las respuestas
+
+### Autenticación con JWT
+El sistema de autenticación implementa las siguientes medidas:
+
+- **Tokens JWT (JSON Web Tokens)**:
+  - Generados por el Auth Service tras login exitoso
+  - Contienen únicamente el ID del usuario (sin datos sensibles)
+  - Firmados con HS256 (HMAC-SHA256)
+  - Expiración configurable (60 minutos por defecto)
+  - Secret key configurable via variable de entorno `JWT_SECRET`
+
+- **Validaciones en Login**:
+  - Email y password son obligatorios
+  - Búsqueda de usuario en DynamoDB por email
+  - Comparación de password con hash usando bcrypt
+  - Retorna 401 Unauthorized si las credenciales son inválidas
+  - Retorna 400 Bad Request si faltan datos
+
+- **Estructura del Token**:
+  ```json
+  {
+    "user_id": "uuid-del-usuario",
+    "exp": 1738384800,
+    "iat": 1738381200
+  }
+  ```
+
+- **Uso del Token**:
+  - El token se puede incluir en headers HTTP: `Authorization: Bearer <token>`
+  - Se puede validar usando el método `ValidateToken` del Auth Service
+  - Retorna el ID del usuario si el token es válido
 
 **Ejemplo de validación:**
 ```bash
@@ -321,7 +496,149 @@ curl -X POST http://localhost:8080/api/employees \
   }'
 # Success: devuelve empleado sin password
 ```
+## 🔐 Microservicio Auth Service
 
+### Descripción
+
+El **Auth Service** es un microservicio independiente responsable de la autenticación de usuarios. Implementa:
+
+- ✅ Validación de credenciales (email y password obligatorios)
+- ✅ Búsqueda de usuarios en DynamoDB por email
+- ✅ Comparación segura de passwords usando bcrypt
+- ✅ Generación de tokens JWT con el ID del usuario
+- ✅ Validación de tokens JWT
+- ✅ Arquitectura hexagonal con puertos y adaptadores
+
+### Endpoints Disponibles
+
+#### POST /auth/login
+Autentica un usuario y genera un token JWT.
+
+**Request:**
+```json
+{
+  "email": "usuario@example.com",
+  "password": "SecurePass123!"
+}
+```
+
+**Response exitosa (200):**
+```json
+{
+  "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+  "user_id": "uuid-del-usuario",
+  "expires_at": 1738384800
+}
+```
+
+**Errores posibles:**
+- `400 Bad Request`: Email o password faltante
+- `401 Unauthorized`: Credenciales inválidas
+- `500 Internal Server Error`: Error del servidor
+
+#### GET /health
+Verifica el estado del servicio.
+
+**Response (200):**
+```json
+{
+  "status": "ok"
+}
+```
+
+### Configuración
+
+El servicio se configura mediante variables de entorno:
+
+```bash
+# DynamoDB
+AWS_REGION=us-east-1
+AWS_ENDPOINT=http://localstack:4566
+DYNAMODB_TABLE=employees
+
+# JWT
+JWT_SECRET=my-super-secret-jwt-key-change-in-production
+JWT_EXPIRATION_MINUTES=60
+
+# Servidor
+PORT=8082
+```
+
+### Arquitectura Interna
+
+El Auth Service sigue arquitectura hexagonal con 3 puertos principales:
+
+1. **UserRepository** (puerto): Interfaz para buscar usuarios
+   - **Adaptador**: `DynamoDBUserRepository` - Busca por email en DynamoDB
+
+2. **PasswordHasher** (puerto): Interfaz para comparar passwords
+   - **Adaptador**: `BcryptPasswordHasher` - Compara usando bcrypt
+
+3. **TokenGenerator** (puerto): Interfaz para generar/validar JWT
+   - **Adaptador**: `JWTTokenGenerator` - Usa golang-jwt/jwt/v5
+
+### Flujo de Autenticación
+
+```
+1. Usuario → POST /auth/login {email, password}
+2. Auth Service valida que email y password no estén vacíos
+3. Busca usuario en DynamoDB por email
+4. Compara password con hash almacenado (bcrypt)
+5. Si coincide: Genera JWT con user_id
+6. Retorna {token, user_id, expires_at}
+```
+
+### Estructura del Token JWT
+
+El token contiene únicamente el ID del usuario (sin datos sensibles):
+
+```json
+{
+  "user_id": "uuid-del-usuario",
+  "exp": 1738384800,  // Timestamp de expiración
+  "iat": 1738381200   // Timestamp de emisión
+}
+```
+
+### Ejemplo de Uso Completo
+
+```bash
+# 1. Crear un usuario
+curl -X POST http://localhost:8080/api/employees \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "Juan Pérez",
+    "email": "juan@example.com",
+    "password": "SecurePass123!"
+  }'
+
+# 2. Autenticarse
+curl -X POST http://localhost:8082/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{
+    "email": "juan@example.com",
+    "password": "SecurePass123!"
+  }'
+
+# Respuesta:
+{
+  "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoiOThiYjNkNjgtZGI1MC00YjYyLTlmMDctYjgyNjhlMDE1MTgyIiwiZXhwIjoxNzM4Mzg0ODAwLCJpYXQiOjE3MzgzODEyMDB9.xyz",
+  "user_id": "98bb3d68-db50-4b62-9f07-b8268e015182",
+  "expires_at": 1738384800
+}
+
+# 3. Usar el token en peticiones autenticadas
+curl -X GET http://localhost:8080/api/employees \
+  -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+```
+
+### Consideraciones de Seguridad
+
+- 🔒 **JWT Secret**: Cambiar `JWT_SECRET` en producción
+- 🔒 **HTTPS**: Usar HTTPS en producción para proteger tokens
+- 🔒 **Expiración**: Los tokens expiran después de 60 minutos
+- 🔒 **Password**: Nunca se transmite ni almacena en texto plano
+- 🔒 **Bcrypt**: Los passwords se comparan usando bcrypt (resistente a ataques de fuerza bruta)
 ## �🔍 Troubleshooting
 
 ### Error: "Cannot connect to LocalStack"
@@ -337,7 +654,15 @@ Verifica que las tablas DynamoDB se crearon correctamente.
 ```bash
 docker-compose logs -f [service-name]
 # Ejemplo: docker-compose logs -f employee-service
+# Ejemplo: docker-compose logs -f auth-service
 ```
+
+### Error en autenticación: "Invalid email or password"
+Verifica que:
+1. El usuario fue creado correctamente en employee-service
+2. El email es exacto (case-sensitive)
+3. El password es correcto
+4. El auth-service tiene acceso a la misma tabla DynamoDB (employees)
 
 ## 📄 Licencia
 

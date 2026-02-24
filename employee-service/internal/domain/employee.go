@@ -10,7 +10,7 @@ type Employee struct {
 	ID        string    `json:"id"`
 	Name      string    `json:"name"`
 	Email     string    `json:"email"`
-	Password  string    `json:"-"` // No se serializa en JSON
+	Password  string    `json:"-"` // Hash del password (nunca se serializa en JSON)
 	CreatedAt time.Time `json:"created_at"`
 }
 
