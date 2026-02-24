@@ -1,18 +1,18 @@
 package main
 
 import (
+	"auth-service/internal/application"
+	"auth-service/internal/infrastructure"
 	"context"
-	"employee-service/internal/application"
-	"employee-service/internal/infrastructure"
 	"log"
 	"net/http"
 	"os"
+	"strconv"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/credentials"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
-	"github.com/aws/aws-sdk-go-v2/service/sqs"
 )
 
 func main() {
@@ -37,14 +37,8 @@ func main() {
 		log.Fatalf("Error loading AWS config: %v", err)
 	}
 
-	// Crear clientes de AWS
+	// Crear cliente de DynamoDB
 	dynamoClient := dynamodb.NewFromConfig(cfg, func(o *dynamodb.Options) {
-		if awsEndpoint != "" {
-			o.BaseEndpoint = aws.String(awsEndpoint)
-		}
-	})
-
-	sqsClient := sqs.NewFromConfig(cfg, func(o *sqs.Options) {
 		if awsEndpoint != "" {
 			o.BaseEndpoint = aws.String(awsEndpoint)
 		}
@@ -56,26 +50,41 @@ func main() {
 		tableName = "employees"
 	}
 
-	queueURL := os.Getenv("SQS_QUEUE_URL")
-	if queueURL == "" {
-		log.Fatal("SQS_QUEUE_URL environment variable is required")
+	jwtSecret := os.Getenv("JWT_SECRET")
+	if jwtSecret == "" {
+		jwtSecret = "my-secret-key-change-in-production"
+		log.Println("WARNING: Using default JWT secret. Set JWT_SECRET environment variable in production.")
 	}
 
-	// Crear instancias de infraestructura
-	repository := infrastructure.NewDynamoDBRepository(dynamoClient, tableName)
-	publisher := infrastructure.NewSQSEventPublisher(sqsClient, queueURL)
-	passwordHasher := infrastructure.NewBcryptPasswordHasher()
+	jwtExpirationStr := os.Getenv("JWT_EXPIRATION_MINUTES")
+	jwtExpiration := 60 // Default: 60 minutos
+	if jwtExpirationStr != "" {
+		if exp, err := strconv.Atoi(jwtExpirationStr); err == nil {
+			jwtExpiration = exp
+		}
+	}
 
-	// Crear servicio de aplicación (con inyección de dependencias)
-	service := application.NewEmployeeService(repository, publisher, passwordHasher)
+	// Crear instancias de infraestructura (adaptadores)
+	repository := infrastructure.NewDynamoDBUserRepository(dynamoClient, tableName)
+	passwordHasher := infrastructure.NewBcryptPasswordHasher()
+	tokenGenerator := infrastructure.NewJWTTokenGenerator(jwtSecret, jwtExpiration)
+
+	// Crear servicio de aplicación con inyección de dependencias
+	service := application.NewAuthService(repository, passwordHasher, tokenGenerator)
 
 	// Crear manejador HTTP
 	handler := infrastructure.NewHTTPHandler(service)
 	router := handler.SetupRoutes()
 
 	// Iniciar servidor
-	log.Println("Employee service starting on port 8081...")
-	if err := http.ListenAndServe(":8081", router); err != nil {
+	port := os.Getenv("PORT")
+	if port == "" {
+		port = "8082"
+	}
+
+	log.Printf("Auth service starting on port %s...", port)
+	log.Printf("JWT expiration: %d minutes", jwtExpiration)
+	if err := http.ListenAndServe(":"+port, router); err != nil {
 		log.Fatal(err)
 	}
 }

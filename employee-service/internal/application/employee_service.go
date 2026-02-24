@@ -11,15 +11,17 @@ import (
 
 // EmployeeService implementa la lógica de negocio para empleados
 type EmployeeService struct {
-	repository ports.EmployeeRepository
-	publisher  ports.EventPublisher
+	repository     ports.EmployeeRepository
+	publisher      ports.EventPublisher
+	passwordHasher ports.PasswordHasher
 }
 
 // NewEmployeeService crea una nueva instancia del servicio
-func NewEmployeeService(repo ports.EmployeeRepository, pub ports.EventPublisher) *EmployeeService {
+func NewEmployeeService(repo ports.EmployeeRepository, pub ports.EventPublisher, hasher ports.PasswordHasher) *EmployeeService {
 	return &EmployeeService{
-		repository: repo,
-		publisher:  pub,
+		repository:     repo,
+		publisher:      pub,
+		passwordHasher: hasher,
 	}
 }
 
@@ -30,6 +32,13 @@ func (s *EmployeeService) CreateEmployee(ctx context.Context, name, email, passw
 	if err := employee.Validate(); err != nil {
 		return nil, err
 	}
+
+	// Hashear el password usando el puerto (Strategy Pattern)
+	hashedPassword, err := s.passwordHasher.Hash(password)
+	if err != nil {
+		return nil, err
+	}
+	employee.Password = hashedPassword
 
 	employee.ID = uuid.New().String()
 

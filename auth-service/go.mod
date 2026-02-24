@@ -1,4 +1,4 @@
-module employee-service
+module auth-service
 
 go 1.21
 
@@ -8,8 +8,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/credentials v1.16.12
 	github.com/aws/aws-sdk-go-v2/feature/dynamodb/attributevalue v1.12.13
 	github.com/aws/aws-sdk-go-v2/service/dynamodb v1.26.7
-	github.com/aws/aws-sdk-go-v2/service/sqs v1.29.5
-	github.com/google/uuid v1.5.0
+	github.com/golang-jwt/jwt/v5 v5.3.1
 	github.com/gorilla/mux v1.8.1
 	golang.org/x/crypto v0.18.0
 )
