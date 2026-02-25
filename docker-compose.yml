@@ -97,6 +97,20 @@ services:
     networks:
       - app-network
 
+  frontend-basic:
+    build:
+      context: ./frontend_basic
+      dockerfile: Dockerfile
+    container_name: frontend-basic
+    ports:
+      - "3000:3000"
+    environment:
+      - NEXT_PUBLIC_API_URL=http://localhost:8080/api
+    depends_on:
+      - api-gateway
+    networks:
+      - app-network
+
 networks:
   app-network:
     driver: bridge
