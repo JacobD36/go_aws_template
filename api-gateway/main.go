@@ -116,16 +116,38 @@ func (gw *APIGateway) LoginHandler(w http.ResponseWriter, r *http.Request) {
 	w.Write(responseBody)
 }
 
+// CORSMiddleware agrega headers CORS a las respuestas
+func CORSMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Permitir origen específico o todos los orígenes en desarrollo
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
+		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
+		w.Header().Set("Access-Control-Max-Age", "3600")
+
+		// Manejar preflight requests
+		if r.Method == "OPTIONS" {
+			w.WriteHeader(http.StatusOK)
+			return
+		}
+
+		next.ServeHTTP(w, r)
+	})
+}
+
 func main() {
 	gateway := NewAPIGateway()
 
 	router := mux.NewRouter()
-	router.HandleFunc("/api/employees", gateway.CreateEmployeeHandler).Methods("POST")
-	router.HandleFunc("/api/employees", gateway.GetEmployeesHandler).Methods("GET")
-	router.HandleFunc("/api/auth/login", gateway.LoginHandler).Methods("POST")
+	router.HandleFunc("/api/employees", gateway.CreateEmployeeHandler).Methods("POST", "OPTIONS")
+	router.HandleFunc("/api/employees", gateway.GetEmployeesHandler).Methods("GET", "OPTIONS")
+	router.HandleFunc("/api/auth/login", gateway.LoginHandler).Methods("POST", "OPTIONS")
+
+	// Aplicar middleware CORS
+	handler := CORSMiddleware(router)
 
 	log.Println("API Gateway starting on port 8080...")
-	if err := http.ListenAndServe(":8080", router); err != nil {
+	if err := http.ListenAndServe(":8080", handler); err != nil {
 		log.Fatal(err)
 	}
 }

@@ -1,11 +1,12 @@
 # Sistema de Registro de Empleados con Microservicios
 
-Sistema distribuido de registro de empleados utilizando microservicios en Go con arquitectura hexagonal, AWS SQS, DynamoDB y LocalStack.
+Sistema distribuido de registro de empleados utilizando microservicios en Go con arquitectura hexagonal, AWS SQS, DynamoDB, LocalStack y frontend en React/Next.js.
 
 ## 📋 Descripción
 
 Este proyecto implementa un sistema de registro de empleados usando:
 
+- **Frontend Basic**: Portal administrativo web con React, Next.js y TypeScript
 - **API Gateway**: Punto de entrada HTTP con endpoints REST
 - **Employee Service**: Microservicio que gestiona el registro de empleados
 - **Auth Service**: Microservicio de autenticación que genera tokens JWT
@@ -17,6 +18,20 @@ Este proyecto implementa un sistema de registro de empleados usando:
 El sistema sigue los principios de arquitectura hexagonal (puertos y adaptadores) y SOLID:
 
 ```
+frontend_basic/
+├── app/                 # Next.js App Router
+│   ├── login/          # Página de login
+│   └── employees/      # Gestión de empleados
+├── components/         # Componentes React
+│   ├── ui/            # Componentes base
+│   ├── layout/        # Layout del dashboard
+│   └── employees/     # Componentes de empleados
+├── lib/               # Utilidades y servicios
+│   ├── api.ts        # Cliente API
+│   ├── auth.ts       # Autenticación
+│   └── constants.ts  # Constantes
+└── types/            # Tipos TypeScript
+
 api-gateway/
 ├── main.go
 ├── go.mod
@@ -110,6 +125,7 @@ go mod tidy
 cd ..
 ```
 
+- Frontend Basic (puerto 3000)
 ### 2. Iniciar servicios con Docker Compose
 
 Desde la raíz del proyecto:
@@ -217,6 +233,29 @@ Respuesta esperada:
 ```
 
 **Nota:** El token JWT contiene únicamente el ID del usuario y se puede usar para autenticar peticiones HTTP. El endpoint `/api/auth/login` en el API Gateway reenvía las peticiones al Auth Service.
+
+### 🌐 Usar el Frontend (Interfaz Web)
+
+El portal administrativo está disponible en: **http://localhost:3000**
+
+#### Características del Frontend:
+- **Login**: Página de autenticación con formulario validado
+- **Dashboard**: Portal con menú lateral
+- **Gestión de Empleados**:
+  - Lista de empleados en formato tabla
+  - Botón "Nuevo Empleado" que abre un modal
+  - Validación de formularios en tiempo real
+  - Estados de carga y error
+  - Mensajes de éxito y error
+
+#### Flujo de uso:
+1. Abre http://localhost:3000 en tu navegador
+2. Inicia sesión con credenciales de un empleado registrado
+3. Serás redirigido al dashboard con la lista de empleados
+4. Usa el botón "Nuevo Empleado" para registrar nuevos empleados
+5. Los botones editar/eliminar están implementados solo visualmente
+
+**Nota:** El frontend se comunica con el API Gateway en el puerto 8080. Asegúrate de tener todos los servicios corriendo.
 
 ### Ver logs del Logger Service
 
