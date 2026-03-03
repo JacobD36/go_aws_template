@@ -25,11 +25,16 @@ fi
 sleep 2
 
 echo ""
-echo "Creando cola SQS..."
+echo "Creando colas SQS..."
 aws --endpoint-url=http://localhost:4566 sqs create-queue \
     --queue-name employee-queue \
     --region us-east-1 \
-    --no-cli-pager 2>/dev/null || echo "Cola SQS ya existe o error al crear"
+    --no-cli-pager 2>/dev/null || echo "Cola employee-queue ya existe o error al crear"
+
+aws --endpoint-url=http://localhost:4566 sqs create-queue \
+    --queue-name employee-events-queue \
+    --region us-east-1 \
+    --no-cli-pager 2>/dev/null || echo "Cola employee-events-queue ya existe o error al crear"
 
 echo ""
 echo "Creando tabla DynamoDB para empleados..."
@@ -50,6 +55,16 @@ aws --endpoint-url=http://localhost:4566 dynamodb create-table \
     --provisioned-throughput ReadCapacityUnits=5,WriteCapacityUnits=5 \
     --region us-east-1 \
     --no-cli-pager 2>/dev/null || echo "Tabla employee-logs ya existe o error al crear"
+
+echo ""
+echo "Creando tabla DynamoDB para mensajes..."
+aws --endpoint-url=http://localhost:4566 dynamodb create-table \
+    --table-name messages \
+    --attribute-definitions AttributeName=id,AttributeType=S \
+    --key-schema AttributeName=id,KeyType=HASH \
+    --provisioned-throughput ReadCapacityUnits=5,WriteCapacityUnits=5 \
+    --region us-east-1 \
+    --no-cli-pager 2>/dev/null || echo "Tabla messages ya existe o error al crear"
 
 echo ""
 echo "=========================================="
