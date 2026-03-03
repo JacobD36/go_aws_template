@@ -5,9 +5,13 @@
 echo "Esperando a que LocalStack esté listo..."
 sleep 10
 
-echo "Creando cola SQS..."
+echo "Creando colas SQS..."
 aws --endpoint-url=http://localhost:4566 sqs create-queue \
     --queue-name employee-queue \
+    --region us-east-1
+
+aws --endpoint-url=http://localhost:4566 sqs create-queue \
+    --queue-name employee-events-queue \
     --region us-east-1
 
 echo "Creando tabla DynamoDB para empleados..."
@@ -23,6 +27,14 @@ aws --endpoint-url=http://localhost:4566 dynamodb create-table \
     --table-name employee-logs \
     --attribute-definitions AttributeName=ID,AttributeType=S \
     --key-schema AttributeName=ID,KeyType=HASH \
+    --provisioned-throughput ReadCapacityUnits=5,WriteCapacityUnits=5 \
+    --region us-east-1
+
+echo "Creando tabla DynamoDB para mensajes..."
+aws --endpoint-url=http://localhost:4566 dynamodb create-table \
+    --table-name messages \
+    --attribute-definitions AttributeName=id,AttributeType=S \
+    --key-schema AttributeName=id,KeyType=HASH \
     --provisioned-throughput ReadCapacityUnits=5,WriteCapacityUnits=5 \
     --region us-east-1
 

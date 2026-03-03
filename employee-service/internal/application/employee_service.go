@@ -46,10 +46,15 @@ func (s *EmployeeService) CreateEmployee(ctx context.Context, name, email, passw
 		return nil, err
 	}
 
-	// Publicar evento
+	// Publicar evento (sin información sensible)
 	event := &domain.EmployeeEvent{
 		EventType: "employee.created",
-		Employee:  employee,
+		Employee: &domain.EmployeeEventData{
+			ID:        employee.ID,
+			Name:      employee.Name,
+			Email:     employee.Email,
+			CreatedAt: employee.CreatedAt.Format(time.RFC3339),
+		},
 		Timestamp: time.Now().Format(time.RFC3339),
 	}
 
