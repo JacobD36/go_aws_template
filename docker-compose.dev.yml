@@ -1,0 +1,157 @@
+services:
+  localstack:
+    image: localstack/localstack:latest
+    container_name: localstack
+    ports:
+      - "4566:4566"
+    environment:
+      - SERVICES=sqs,dynamodb
+      - DEBUG=1
+    networks:
+      - app-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:4566/_localstack/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  api-gateway:
+    build:
+      context: ./api-gateway
+      dockerfile: Dockerfile.dev
+    container_name: api-gateway-dev
+    ports:
+      - "8080:8080"
+    environment:
+      - EMPLOYEE_SERVICE_URL=http://employee-service:8081
+      - AUTH_SERVICE_URL=http://auth-service:8082
+    volumes:
+      - ./api-gateway:/app
+      - /app/tmp
+    depends_on:
+      - employee-service
+      - auth-service
+    networks:
+      - app-network
+
+  employee-service:
+    build:
+      context: ./employee-service
+      dockerfile: Dockerfile.dev
+    container_name: employee-service-dev
+    ports:
+      - "8081:8081"
+    environment:
+      - AWS_REGION=us-east-1
+      - AWS_ENDPOINT=http://localstack:4566
+      - AWS_ACCESS_KEY_ID=test
+      - AWS_SECRET_ACCESS_KEY=test
+      - SQS_QUEUE_URL=http://sqs.us-east-1.localhost.localstack.cloud:4566/000000000000/employee-events-queue
+      - DYNAMODB_TABLE=employees
+    volumes:
+      - ./employee-service:/app
+      - /app/tmp
+    depends_on:
+      localstack:
+        condition: service_healthy
+    restart: on-failure
+    networks:
+      - app-network
+
+  logger-service:
+    build:
+      context: ./logger-service
+      dockerfile: Dockerfile.dev
+    container_name: logger-service-dev
+    environment:
+      - AWS_REGION=us-east-1
+      - AWS_ENDPOINT=http://localstack:4566
+      - AWS_ACCESS_KEY_ID=test
+      - AWS_SECRET_ACCESS_KEY=test
+      - SQS_QUEUE_URL=http://sqs.us-east-1.localhost.localstack.cloud:4566/000000000000/employee-queue
+      - DYNAMODB_TABLE=employee-logs
+    volumes:
+      - ./logger-service:/app
+      - /app/tmp
+    depends_on:
+      localstack:
+        condition: service_healthy
+      employee-service:
+        condition: service_started
+    restart: on-failure
+    networks:
+      - app-network
+
+  auth-service:
+    build:
+      context: ./auth-service
+      dockerfile: Dockerfile.dev
+    container_name: auth-service-dev
+    ports:
+      - "8082:8082"
+    environment:
+      - AWS_REGION=us-east-1
+      - AWS_ENDPOINT=http://localstack:4566
+      - AWS_ACCESS_KEY_ID=test
+      - AWS_SECRET_ACCESS_KEY=test
+      - DYNAMODB_TABLE=employees
+      - JWT_SECRET=my-super-secret-jwt-key-change-in-production
+      - JWT_EXPIRATION_MINUTES=60
+      - PORT=8082
+    volumes:
+      - ./auth-service:/app
+      - /app/tmp
+    depends_on:
+      localstack:
+        condition: service_healthy
+    restart: on-failure
+    networks:
+      - app-network
+
+  messaging-service:
+    build:
+      context: ./messaging-service
+      dockerfile: Dockerfile.dev
+    container_name: messaging-service-dev
+    environment:
+      - AWS_REGION=us-east-1
+      - AWS_ENDPOINT=http://localstack:4566
+      - AWS_ACCESS_KEY_ID=test
+      - AWS_SECRET_ACCESS_KEY=test
+      - EMPLOYEE_EVENTS_QUEUE_URL=http://sqs.us-east-1.localhost.localstack.cloud:4566/000000000000/employee-events-queue
+      - LOG_QUEUE_URL=http://sqs.us-east-1.localhost.localstack.cloud:4566/000000000000/employee-queue
+      - DYNAMODB_TABLE=messages
+    volumes:
+      - ./messaging-service:/app
+      - /app/tmp
+    depends_on:
+      localstack:
+        condition: service_healthy
+      employee-service:
+        condition: service_started
+    restart: on-failure
+    networks:
+      - app-network
+
+  frontend-basic:
+    build:
+      context: ./frontend_basic
+      dockerfile: Dockerfile.dev
+    container_name: frontend-basic-dev
+    ports:
+      - "3000:3000"
+    environment:
+      - NEXT_PUBLIC_API_URL=http://localhost:8080/api
+    volumes:
+      - ./frontend_basic:/app
+      - /app/node_modules
+      - /app/.next
+    depends_on:
+      - api-gateway
+    networks:
+      - app-network
+
+networks:
+  app-network:
+    driver: bridge

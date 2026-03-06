@@ -1,0 +1,17 @@
+FROM node:20-alpine
+
+WORKDIR /app
+
+# Copiar archivos de dependencias
+COPY package.json package-lock.json* ./
+
+# Instalar dependencias
+RUN npm ci
+
+# El código se monta como volumen, no se copia en el build
+
+# Exponer puerto
+EXPOSE 3000
+
+# Comando de desarrollo con hot reload
+CMD ["npm", "run", "dev"]

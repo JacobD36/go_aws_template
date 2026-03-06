@@ -1,0 +1,18 @@
+FROM golang:1.23-alpine
+
+WORKDIR /app
+
+# Copiar go mod files primero
+COPY go.mod go.sum* ./
+RUN go mod download
+
+# Instalar Air para hot reload
+RUN go install github.com/air-verse/air@v1.61.1
+
+# El código se monta como volumen, no se copia en el build
+
+# Exponer puerto
+EXPOSE 8082
+
+# Comando por defecto usando Air
+CMD ["air", "-c", ".air.toml"]
