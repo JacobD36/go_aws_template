@@ -25,6 +25,14 @@ vendor/
 
 # Ignorar datos de LocalStack
 localstack-data/
+localstack_data/
+
+# Ignorar archivos temporales de Air (hot reload)
+tmp/
+**/tmp/
+*.log
+build-errors.log
+**/build-errors.log
 
 # Ignorar archivos de sistema
 .DS_Store
